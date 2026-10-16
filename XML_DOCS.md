@@ -34,23 +34,6 @@ to a PSX memory card block.
 </svedit>
 ```
 
-## List of enum definitions (`enums`)
-### Attributes
-- No attributes.
-
-### Contains
-1. `enumdef`: Individual definitions for each enum.
-
-### Example
-```xml
-<enums>
-    <enumdef id="...">
-        <!-- possible values... -->
-    </enumdef>
-    <!-- You can define as many as you need! -->
-</enums>
-```
-
 ## Enum definitions (`enumdef`)
 Optionally, you can define custom "enums" to use around your file, if you have certain entries that can only
 take a set list of values, like `0x00` for `locked` and `0x01` for `unlocked`, for example.
