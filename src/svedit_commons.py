@@ -147,7 +147,7 @@ def draw_box(params: BoxDrawingParams):
             buf.buf_write(f"{bc}│{reset}{fc}{' ' * inner_w}{reset}{bc}│{reset}")
 
 CONTRIBUTE_PY_TEMPLATE = """\
-\"\"\"
+\"""
 CONTRIBUTE-%fmt.py
 
 For transparency, running this file will:
@@ -155,7 +155,7 @@ For transparency, running this file will:
 2. Open %fmt.xml in your editor, if it exists;
 3. Else, create it in ./fmts/%fmt.xml;
 4. Create COMMIT.py for submitting your update;
-\"\"\"
+\"""
 
 import os
 import sys
@@ -163,27 +163,39 @@ import shutil
 import subprocess
 from pathlib import Path
 
-print(f"info: setting up contribution workspace for %fmt...")
-if shutil.which("git") is None:
-    print("error: git not found.")
-    print("       install from pacman, apt, etc...")
-    sys.exit(1)
-
-if shutil.which("gh") is None:
-    print("error: github cli not found.")
-    print("       install from pacman, apt, etc...")
-    sys.exit(1)
-
-if subprocess.run(["gh", "auth", "status"]).returncode != 0:
-    print("warn: you must be signed into the github cli")
-    if subprocess.run(["gh", "auth", "login"]).returncode != 0:
-        print("error: failed to authenticate. try again.")
+try:
+    print(f"> setting up contribution workspace for %fmt...")
+    if shutil.which("git") is None:
+        print("error: git not found.")
+        print("       install from pacman, apt, etc...")
         sys.exit(1)
 
-try:
-    subprocess.run(["gh", "repo", "fork", "%repo", "--clone"], check=True)
-except subprocess.CalledProcessError:
-    print("error: error during forking/cloning. do you already have a fork or directory named 'svedit'?")
+    if shutil.which("gh") is None:
+        print("error: github cli not found.")
+        print("       install from pacman, apt, etc...")
+        sys.exit(1)
+
+    if subprocess.run(["gh", "auth", "status"], stderr=subprocess.DEVNULL).returncode != 0:
+        print("warn: you must be signed into the github cli")
+        try:
+            if subprocess.run(["gh", "auth", "login"], stderr=subprocess.STDOUT).returncode != 0:
+                print("error: failed to authenticate. try again.")
+                sys.exit(1)
+        except KeyboardInterrupt:
+            print("error: login canceled!")
+            sys.exit(1)
+
+    try:
+        subprocess.run(["gh", "repo", "fork", "%repo", "--clone"], check=True)
+    except subprocess.CalledProcessError:
+        print("error: error during forking/cloning. do you already have a fork or directory named 'svedit'?")
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("error: fork and/or clone interrupted!")
+        print("       check for leftover files!")
+        sys.exit(1)
+except KeyboardInterrupt:
+    print("warn: setup interrupted!")
     sys.exit(1)
 os.chdir("svedit")
 
@@ -195,18 +207,59 @@ if not xml_path.exists():
     print(f"warn: could not find {xml_path}. created empty file.")
     open(xml_path, "w").close()
 
+COMMIT_PY = f\"""
+%commit_py
+\"""
+
+open("COMMIT.py", "w").write(COMMIT_PY)
+print("> created COMMIT.py")
+
 editor = os.environ.get("EDITOR", "nano")
-print(f"info: opening {xml_path} in {editor}...")
+print(f"> opening {xml_path} in {editor}...")
 subprocess.run([editor, str(xml_path)])
 
-print("> set up complete! make your edits, save, and run 'python COMMIT.py' when you're ready.")
-print()
-print("> if you'd rather not build svedit, and run straight from python...")
-print("  ... set 'IS_DEBUG_SESSION' to True in ./src/svedit_core.py")"""
+print("\\n> set up complete! make your edits, save, and run 'python COMMIT.py' when you're ready.")
+print("\\n> if you'd rather not build svedit, and run straight from python...")
+print("  ...set 'IS_DEBUG_SESSION' to True in ./src/svedit_core.py")"""
+
+COMMIT_PY = "\n".join([
+    "\\\"\"\"",
+    "COMMIT.py",
+    "",
+    "For transparency, running this file will:",
+    "1. Commit your changed format file to the new branch;",
+    "2. Start a pull request to the main repository;",
+    "\\\"\"\"",
+    "",
+    "import subprocess",
+    "",
+    "print(f\"> pushing changes to format '%fmt'...\")",
+    "if shutil.which(\"git\") is None:",
+    "    print(\"error: git not found.\")",
+    "    print(\"       install from pacman, apt, etc...\")",
+    "    sys.exit(1)",
+    "",
+    "if shutil.which(\"gh\") is None:",
+    "    print(\"error: github cli not found.\")",
+    "    print(\"       install from pacman, apt, etc...\")",
+    "    sys.exit(1)",
+    "",
+    "if subprocess.run([\"gh\", \"auth\", \"status\"]).returncode != 0:",
+    "    print(\"warn: you must be signed into the github cli\")",
+    "    if subprocess.run([\"gh\", \"auth\", \"login\"]).returncode != 0:",
+    "        print(\"error: failed to authenticate. try again.\")",
+    "        sys.exit(1)",
+    "",
+    "subprocess.run([\"git\", \"add\", \".\"])",
+    "subprocess.run([\"git\", \"commit\", \"-m\", '\"update %fmt.xml\"'])",
+    "subprocess.run([\"git\", \"push\", \"-u\", \"origin\", {branch_name}])",
+    "subpricess.run([\"gh\", \"pr\", \"create\", \"--fill\"])",
+])
 
 def generate_contribute_sh(mapped_fmt: str):
     file_content = (
         CONTRIBUTE_PY_TEMPLATE
+        .replace("%commit_py", COMMIT_PY)
         .replace("%fmt", mapped_fmt)
         .replace("%repo", core.GITHUB_REPO)
     )
