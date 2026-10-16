@@ -1,0 +1,59 @@
+<svedit pattern="DRAX.." generic="DRAX" contributor="QuantumsSources">
+    <enums>
+        <enumdef id="relic">
+            <int name="in-use">3</int>
+            <int name="unlocked">1</int>
+            <int name="locked">0</int>
+        </enumdef>
+    </enums>
+
+    <file unfinished="true">
+        <dict name="DRAX" display="Save File">
+            <str name="name" length="8" encoding="ascii" display="Name"/>
+            <blank length="4"/>
+            <int name="level" length="4" order="little" display="Level"/>
+            <int name="gold" length="4" order="little" display="Money"/>
+            <tuple name="playtime" display="Playtime">
+                <int name="hours" length="4" order="little" display="Hours"/>
+                <int name="minutes" length="4" order="little" display="Minutes"/>
+                <int name="seconds" length="4" order="little" display="Seconds"/>
+            </tuple>
+            <blank length="10"/>
+            <int name="rooms" length="2" order="little" display="Explored Rooms"/>
+            <blank length="12"/>
+            <dict name="relics" display="Relics">
+                <enum id="relic" name="bat_form" display="Soul of Bat" length="1"/>
+                <enum id="relic" name="bat_fire" display="Fire of Bat" length="1"/>
+                <enum id="relic" name="bat_echo" display="Echo of Bat" length="1"/>
+                <enum id="relic" name="bat_echo_2" display="Force of Echo" length="1"/>
+                <enum id="relic" name="wolf_form" display="Soul of Wolf" length="1"/>
+                <enum id="relic" name="wolf_run" display="Power of Wolf" length="1"/>
+                <enum id="relic" name="wolf_dash" display="Skill of Wolf" length="1"/>
+                <enum id="relic" name="mist_form" display="Form of Mist" length="1"/>
+                <enum id="relic" name="mist_form_2" display="Power of Mist" length="1"/>
+                <enum id="relic" name="mist_attack" display="Gas Cloud" length="1"/>
+                <enum id="relic" name="extra_items" display="Cube of Zoe" length="1"/>
+                <enum id="relic" name="show_dmg" display="Spirit Orb" length="1"/>
+                <enum id="relic" name="super_jump" display="Gravity Boots" length="1"/>
+                <enum id="relic" name="double_jump" display="Leap Stone" length="1"/>
+                <enum id="relic" name="holy_snorkel" display="Holy Symbol" length="1"/>
+                <enum id="relic" name="show_names" display="Faerie Scroll" length="1"/>
+                <enum id="relic" name="open_blue_doors" display="Jewel of Open" length="1"/>
+                <enum id="relic" name="right_oarsman" display="Merman Statue" length="1"/>
+                <enum id="relic" name="bat_fam" display="Bat Card" length="1"/>
+                <enum id="relic" name="ghost_fam" display="Ghost Card" length="1"/>
+                <enum id="relic" name="faerie_fam" display="Faerie Card" length="1"/>
+                <enum id="relic" name="demon_fam" display="Demon Card" length="1"/>
+                <enum id="relic" name="sword_fam" display="Sword Card" length="1"/>
+                <enum id="relic" name="fairy_fam" display="Fairy Card" length="1" unused="true"/>
+                <enum id="relic" name="nose_fam" display="Nose Devil Card" length="1" unused="true"/>
+                <enum id="relic" name="dracula_piece_1" display="Heart of Vlad" length="1"/>
+                <enum id="relic" name="dracula_piece_2" display="Tooth of Vlad" length="1"/>
+                <enum id="relic" name="dracula_piece_3" display="Rib of Vlad" length="1"/>
+                <enum id="relic" name="dracula_piece_4" display="Ring of Vlad" length="1"/>
+                <enum id="relic" name="dracula_piece_5" display="Eye of Vlad" length="1"/>
+            </dict>
+            <!-- WORK IN PROGRESS! -->
+        </dict>
+    </file>
+</svedit>

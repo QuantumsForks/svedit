@@ -1,0 +1,214 @@
+import os
+import re
+import sys
+import tty
+import select
+import termios
+import svedit_core as core
+
+from pathlib import Path
+from xml.etree import ElementTree
+from ansicodelib import ANSIBuffer as buf, ANSICursor as cur, ANSIColors as colors
+
+class IncorrectTerminalError(Exception):
+    pass
+
+ANSI_KEY_MAP = {
+    "\x1B[A": "UP",
+    "\x1B[B": "DOWN",
+    "\x1B[C": "RIGHT",
+    "\x1B[D": "LEFT",
+    "\x1B[1;2A": "SHIFT_UP",
+    "\x1B[1;2B": "SHIFT_DOWN",
+    "\x1B[1;2C": "SHIFT_RIGHT",
+    "\x1B[1;2D": "SHIFT_LEFT",
+}
+
+def get_key(timeout: float = 0.05) -> str|None:
+    fd = sys.stdin.fileno()
+    try:
+        old = termios.tcgetattr(fd)
+    except termios.error:
+        raise IncorrectTerminalError()
+
+    try:
+        tty.setraw(fd)
+        r, _, _ = select.select([fd], [], [], timeout)
+        if not r or not (ch_bytes := os.read(fd, 1)):
+            return None
+
+        ch = ch_bytes.decode("utf-8")
+        if ch != "\x1b":
+            return ch
+
+        seq = ch
+        while True:
+            r_seq, _, _ = select.select([fd], [], [], 0.05)
+            if not r_seq:
+                break
+            seq += os.read(fd, 1).decode("utf-8")
+            if seq in ANSI_KEY_MAP:
+                return ANSI_KEY_MAP[seq]
+            if len(seq) > 6:
+                break
+
+        return ANSI_KEY_MAP.get(seq, ch)
+    finally:
+        termios.tcsetattr(fd, termios.TCSANOW, old)
+
+class UnknownFormatError(Exception):
+    pass
+
+mappings: dict[str, str] = { }
+contributors: dict[str, str] = { }
+for file in os.listdir(core.FORMATS_PATH):
+    file = Path(core.FORMATS_PATH / file)
+    if file.is_file() and file.suffix == ".xml":
+        root = ElementTree.parse(file).getroot()
+        pattern = root.attrib.get("pattern", None)
+        generic = root.attrib.get("generic", None)
+
+        if pattern is not None and generic is not None:
+            mappings[pattern] = generic
+            contributor = root.attrib.get("contributor", None)
+            if contributor is not None:
+                contributors[generic] = contributor
+
+def get_mapped_format(fmt: str) -> str:
+    if not fmt:
+        return ""
+    for k, v in mappings.items():
+        if re.match(k, fmt):
+            return v
+    return fmt
+
+def is_format_supported(fmt: str) -> bool:
+    fmt = get_mapped_format(fmt)
+    fmt_path = Path(core.FORMATS_PATH / (fmt + ".xml"))
+    return fmt_path.exists() and fmt_path.is_file()
+
+def get_format_file(fmt: str) -> Path|None:
+    mapped_fmt = get_mapped_format(fmt)
+    if not is_format_supported(mapped_fmt):
+        matched = f"(matched to {mapped_fmt}) " if fmt != mapped_fmt else ""
+        raise UnknownFormatError(f"File format {fmt} {matched}is not recognized!")
+    return Path(core.FORMATS_PATH / (get_mapped_format(mapped_fmt) + ".xml"))
+
+ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+def visible_len(s: str) -> int:
+    return len(ANSI_ESCAPE.sub('', s))
+
+class BoxDrawingParams:
+    def __init__(self, **kwargs):
+        self.x: int = kwargs.get("x", 1)
+        self.y: int = kwargs.get("y", 1)
+        self.width: int = kwargs.get("width", 2)
+        self.height: int = kwargs.get("height", 2)
+        self.title: str = kwargs.get("title", "")
+        self.border_color: str = kwargs.get("border_color", "")
+        self.fill_color: str = kwargs.get("fill_color", "")
+        self.title_color: str = kwargs.get("title_color", "")
+
+def draw_box(params: BoxDrawingParams):
+    if params.width < 2 or params.height < 2:
+        return
+
+    fc = getattr(params, "fill_color", "")
+    bc = getattr(params, "border_color", "")
+    tc = getattr(params, "title_color", "")
+    reset = colors.RESET if (bc or tc or fc) else ""
+
+    title_text = getattr(params, "title", "")
+    raw_title = ANSI_ESCAPE.sub("", title_text)
+
+    inner_w = params.width - 2
+
+    for i in range(params.height):
+        cur.cur_goto(params.x, params.y + i)
+        if i == 0:
+            if title_text:
+                if len(raw_title) > inner_w:
+                    raw_title = raw_title[:max(0, inner_w - 3)] + "..."
+                    title_fmt = f"{tc}{raw_title}{reset}"
+                    t_vis_len = len(raw_title)
+                else:
+                    title_fmt = f"{tc}{title_text}{reset}" if tc else title_text
+                    t_vis_len = visible_len(title_text)
+
+                left_pad = (inner_w - t_vis_len) // 2
+                right_pad = inner_w - t_vis_len - left_pad
+                top_str = f"{bc}┌{'─' * left_pad}{reset}{title_fmt}{bc}{'─' * right_pad}┐{reset}"
+            else:
+                top_str = f"{bc}┌{'─' * inner_w}┐{reset}"
+            buf.buf_write(top_str)
+        elif i == params.height - 1:
+            buf.buf_write(f"{bc}└{'─' * inner_w}┘{reset}")
+        else:
+            buf.buf_write(f"{bc}│{reset}{fc}{' ' * inner_w}{reset}{bc}│{reset}")
+
+CONTRIBUTE_PY_TEMPLATE = """\
+\"\"\"
+CONTRIBUTE-%fmt.py
+
+For transparency, running this file will:
+1. Fork & clone svedit's GitHub repository;
+2. Open %fmt.xml in your editor, if it exists;
+3. Else, create it in ./fmts/%fmt.xml;
+4. Create COMMIT.py for submitting your update;
+\"\"\"
+
+import os
+import sys
+import shutil
+import subprocess
+from pathlib import Path
+
+print(f"info: setting up contribution workspace for %fmt...")
+if shutil.which("git") is None:
+    print("error: git not found.")
+    print("       install from pacman, apt, etc...")
+    sys.exit(1)
+
+if shutil.which("gh") is None:
+    print("error: github cli not found.")
+    print("       install from pacman, apt, etc...")
+    sys.exit(1)
+
+if subprocess.run(["gh", "auth", "status"]).returncode != 0:
+    print("warn: you must be signed into the github cli")
+    if subprocess.run(["gh", "auth", "login"]).returncode != 0:
+        print("error: failed to authenticate. try again.")
+        sys.exit(1)
+
+try:
+    subprocess.run(["gh", "repo", "fork", "%repo", "--clone"], check=True)
+except subprocess.CalledProcessError:
+    print("error: error during forking/cloning. do you already have a fork or directory named 'svedit'?")
+    sys.exit(1)
+os.chdir("svedit")
+
+branch_name = f"format/{"%fmt".lower()}-update"
+subprocess.run(["git", "checkout", "-b", branch_name], check=True)
+
+xml_path = Path(f"fmts/%fmt.xml")
+if not xml_path.exists():
+    print(f"warn: could not find {xml_path}. created empty file.")
+    open(xml_path, "w").close()
+
+editor = os.environ.get("EDITOR", "nano")
+print(f"info: opening {xml_path} in {editor}...")
+subprocess.run([editor, str(xml_path)])
+
+print("> set up complete! make your edits, save, and run 'python COMMIT.py' when you're ready.")
+print()
+print("> if you'd rather not build svedit, and run straight from python...")
+print("  ... set 'IS_DEBUG_SESSION' to True in ./src/svedit_core.py")"""
+
+def generate_contribute_sh(mapped_fmt: str):
+    file_content = (
+        CONTRIBUTE_PY_TEMPLATE
+        .replace("%fmt", mapped_fmt)
+        .replace("%repo", core.GITHUB_REPO)
+    )
+    with open(core.PARENT_PATH / core.CONTRIB_FILE.replace("%fmt", mapped_fmt), "w") as f:
+        f.write(file_content)
