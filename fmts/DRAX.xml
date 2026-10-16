@@ -1,11 +1,9 @@
 <svedit pattern="DRAX.." generic="DRAX" contributor="QuantumsSources">
-    <enums>
-        <enumdef id="relic">
-            <int name="in-use">3</int>
-            <int name="unlocked">1</int>
-            <int name="locked">0</int>
-        </enumdef>
-    </enums>
+    <enumdef id="relic">
+        <int name="in-use">3</int>
+        <int name="unlocked">1</int>
+        <int name="locked">0</int>
+    </enumdef>
 
     <file unfinished="true">
         <dict name="DRAX" display="Save File">
@@ -53,7 +51,6 @@
                 <enum id="relic" name="dracula_piece_4" display="Ring of Vlad" length="1"/>
                 <enum id="relic" name="dracula_piece_5" display="Eye of Vlad" length="1"/>
             </dict>
-            <!-- WORK IN PROGRESS! -->
         </dict>
     </file>
 </svedit>
