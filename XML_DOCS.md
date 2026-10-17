@@ -140,7 +140,7 @@ While not a Python type, you can use the `blank` tag to skip forward a set of by
 
 ### Example
 ```xml
-<float name="x" length="4" order="little" display="X"/>
+<float name="box_x" length="4" order="little" display="Box X position"/>
 ```
 
 ## `bool`

@@ -1,7 +1,7 @@
 <div align="center">
 
 # svedit
-Global PlayStation© 1 save editor.  
+Global PlayStation© 1 save editor.\
 Made with ♥ by quantum.
 
 <img src="readme/ui_example.png" width="600" alt="svedit's block picker, with block 0x03 selected">
@@ -13,8 +13,23 @@ Made with ♥ by quantum.
 ### Intuitive UI, built with UX in mind
 - `svedit` features an intuitive, easy to use, terminal interface.
 - Quickly take a glance at any relevant metadata in your memory card, before diving into the save editor.
-- It will also automatically download everything it needs to run on first startup.
+- It will also automatically download everything it needs to run on first startup (see below).
 - Additionally, `svedit` makes it super easy to get started with collaboration!
+
+> [!note]
+> Whenever you come across a format marked as "unfinished", `svedit` will let you know at the bottom!\
+> If you wish, you can also have `svedit` generate a `CONTRIBUTE.py` script as a  one-click solution, to make
+contributions as easy as possible.
+
+> [!note]
+> When you first run `svedit`, it'll automatically download everything it needs to function.\
+> After that, you can fully use it without an active internet connection.
+> 
+> For full transparency, here's a list of everything it does on first launch (might be subject to expansion):
+> 1. Download the PSX game database from DuckStation, [this file](https://raw.githubusercontent.com/stenzek/duckstation/refs/heads/master/data/resources/gamedb.yaml),
+by default;
+> 2. If used with `--force-dl --db-src=<source>`, download content at `<source>` instead;
+> 3. Cache it into a `.pkl` file for quicker startup times;
 
 <div align="center">
 <img src="readme/dl_example.png" width="750" alt="svedit downloading the PlayStation© game database">
@@ -31,7 +46,7 @@ interface!
 <div align="center">
 <img src="readme/fmts_example.png" width="500" alt="svedit's supported formats">
 <br>
-<sub><b>Figure 3</b>: svedit's current (12/06/26) list of supported formats (Only 1, help expand it!)</sub>
+<sub><b>Figure 3</b>: svedit's current (12/06/26) list of supported formats (Help expand it!)</sub>
 </div>
 
 ## Installation
@@ -40,16 +55,18 @@ interface!
 > This is planned for the (hopefully close) future!
 
 > [!important]
-> `svedit` only works on **Linux and Android**<sub>(through Termux)</sub>.
+> Currently, `svedit` only works on **Linux and Android**<sub>(through Termux)</sub>.\
+> This is due to the program's use of Python's `termios` and `tty` libraries, which are only available
+on Unix-based systems.
 > 
 > It *might* run on Windows through the **Windows Subsystem for Linux (WSL)**, but it is not tested!\
-> A macOS release will depend solely on contributions or forks.
+> A native macOS release will depend solely on contributions or community forks.
 
 ### Prerequisites
 To install `svedit`, you'll need...
 1. python 3.12+;
-2. nuitka (arch: `yay -S nuitka`, deb: `sudo apt install nuitka`);
-3. pyyaml (arch: `sudo pacman -S python-yaml`, deb: `sudo apt install python3-yaml`)
+2. nuitka (arch: `yay -S nuitka`, deb: `sudo apt install nuitka`, etc...);
+3. pyyaml (arch: `sudo pacman -S python-yaml`, deb: `sudo apt install python3-yaml`, etc...)
 
 ### Instructions
 After installing the dependencies above...
@@ -64,7 +81,7 @@ After installing the dependencies above...
 
 ## Contributing
 Thank you for showing interest in contributing to `svedit`!\
-If you've enjoyed using `svedit` and want to help out, there's two main ways to do so:
+If you've enjoyed using `svedit` and want to help out, there's two (or three) main ways to do so:
 
 ### 1. Providing Formats
 `svedit` is, fundamentally, set up on a foundation of collaboration.\
@@ -80,7 +97,8 @@ I highly recommend another tool of mine, built practically specifically for this
 **selfhex**. You can download it [here](https://github.com/QuantumsSources/selfhex).
 
 > [!note]
-> `selfhex` has different requirements than `svedit`!\
+> `selfhex` also uses `nuitka` for building, and relies on no external dependencies.\
+> If you have any issues with it, though, report them on its repository, not this one.
 
 I also recommend reading over the documentation of the XML structure `svedit` expects in `XML_DOCS.md`.
 
@@ -108,11 +126,11 @@ node as an attribute `contributor`. Like this:\
 ### 1.1. Updating Formats
 If you find a format that matches on one or more of the below criteria, you can also update it.
 
-You can update a format if it is:
-1. Hard to understand;
-2. Weirdly formatted;
-3. Incorrect;
-4. Incomplete;
+You can update a format if it falls into one or more of these criteria:
+- Hard to understand;
+- Weirdly formatted;
+- Incorrect;
+- Incomplete;
 
 Doing so follows a similar pattern to creating a new format file:
 1. Fork this repository.
@@ -145,7 +163,14 @@ To help out with bugs or features, here's what you need to do:
 
 ## Footnotes
 > [!important]
-> `svedit` is actively tested out, by me, on multiple terminals.
+> Much like `svedit` downloads **DuckStation's game database** off of GitHub, `svedit`'s entire format library
+(aka, anything in `./fmts/`), which are also licensed under GPLv3 (or later), are freely available for download by
+anyone at all.
+> 
+> _No, you don't need to ask for permission_, go right ahead.
+
+> [!important]
+> `svedit` is actively tested out on multiple terminals.
 > 
 > Here's what you can expect:
 > 1. `kitty`: The one I use to develop `svedit`, best experience overall
