@@ -273,7 +273,7 @@ def main(mods: dict, kwargs: dict, files: list):
 
         if result is not None:
             try:
-                viewer = MCDFileEditor(result, src_file=files[0])
+                viewer = MCDFileEditor(result, src_file=Path(files[0]))
                 viewer.run()
             except UserExitCommand:
                 break

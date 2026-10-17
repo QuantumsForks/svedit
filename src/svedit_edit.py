@@ -94,9 +94,9 @@ class MCDEnum:
         return False
 
 class MCDSaveFilePath:
-    def __init__(self, a: str|int|list[str]|tuple[str]|MCDSaveFilePath):
+    def __init__(self, a: str|int|list[str|int]|tuple[str|int]|MCDSaveFilePath):
         if isinstance(a, MCDSaveFilePath):
-            self.parts = list(a.parts)
+            self.parts = list[str](a.parts)
         elif isinstance(a, str):
             self.parts = a.split(".")
         elif isinstance(a, (tuple, list)):
@@ -110,7 +110,7 @@ class MCDSaveFilePath:
         return len(self.parts)
 
     def __getitem__(self, item):
-        return self.parts.__getitem__(item)
+        return self.parts[item]
 
     def __iter__(self):
         return iter(self.parts)
@@ -393,7 +393,7 @@ class MCDSaveFile:
                     return node
         return None
 
-    def _get_from_path(self, path: MCDSaveFilePath) -> ElementTree.Element:
+    def _get_node_from_path(self, path: MCDSaveFilePath) -> ElementTree.Element:
         current = self._root
 
         for i, a in enumerate(path):
@@ -405,9 +405,24 @@ class MCDSaveFile:
                                f"contain key '{path[i]}'")
         return current
 
+    def _get_from_path(self, path: MCDSaveFilePath) -> Any:
+        current = self._content
+        for a in path:
+            if isinstance(current, dict):
+                current = current.get(a)
+            elif isinstance(current, (list, tuple)):
+                try:
+                    a = int(a, 0)
+                except TypeError:
+                    raise TypeError(f"Expected numerical index for 'list'/'tuple', got '{a}'")
+                current = current[a]
+            else:
+                raise TypeError(f"Found non-iterable type '{type(current).__name__}' in the middle of path.")
+        return current
+
     def GetFileEntryName(self, path: ValidSaveFilePath, *, get_formal_name: bool = False) -> str:
         path = MCDSaveFilePath(path)
-        node = self._get_from_path(path)
+        node = self._get_node_from_path(path)
 
         attrib = node.attrib
         if get_formal_name:
@@ -441,42 +456,28 @@ class MCDSaveFile:
     def Unfinished(self):
         return self._root.attrib.get("unfinished").lower() in ("true", "1")
 
-    def GetFileEntry(self, path: ValidSaveFilePath) -> Any:
+    def GetFileEntry(self, path: ValidSaveFilePath) -> ElementTree.Element:
         path = MCDSaveFilePath(path)
-        return self._get_from_path(path)
+        return self._get_node_from_path(path)
 
     def GetFileEntryOriginalValue(self, path: ValidSaveFilePath) -> Any:
         path = MCDSaveFilePath(path)
-        node = self._get_from_path(path)
-        return self._get_value_from_element(node)
+        return self._get_from_path(path)
 
     def GetFileEntryValue(self, path: ValidSaveFilePath) -> Any:
         path = MCDSaveFilePath(path)
         if path in self.changes:
             return self.changes.get(path)
-
-        current = self._content
-        for a in path:
-            if isinstance(current, dict):
-                current = current.get(a)
-            elif isinstance(current, (list, tuple)):
-                try:
-                    a = int(a, 0)
-                except TypeError:
-                    raise TypeError(f"Expected numerical index for 'list'/'tuple', got '{a}'")
-                current = current[a]
-            else:
-                raise TypeError(f"Found non-iterable type '{type(current).__name__}' in the middle of path.")
-        return current
+        return self.GetFileEntryOriginalValue(path)
 
     def GetFileEntryByteLength(self, path: ValidSaveFilePath) -> int:
         path = MCDSaveFilePath(path)
-        node = self._get_from_path(path)
+        node = self._get_node_from_path(path)
         return MCDNodeData(node).Length
 
     def GetInputMaxLength(self, path: ValidSaveFilePath) -> int:
         path = MCDSaveFilePath(path)
-        node = self._get_from_path(path)
+        node = self._get_node_from_path(path)
         node_data = MCDNodeData(node)
 
         if node_data.Type == "str":
@@ -498,7 +499,7 @@ class MCDSaveFile:
 
     def GetEnumChoices(self, path: ValidSaveFilePath) -> list[MCDEnumItem] | None:
         path = MCDSaveFilePath(path)
-        node = self._get_from_path(path)
+        node = self._get_node_from_path(path)
         if node.tag == "enum":
             enum_id = node.attrib.get("id")
             if enum_id and enum_id in self._enums:
@@ -510,7 +511,7 @@ class MCDSaveFile:
         if raw_input == "":
             return self.GetFileEntryOriginalValue(path)
 
-        node = self._get_from_path(path)
+        node = self._get_node_from_path(path)
         node_data = MCDNodeData(node)
 
         if node_data.Type == "int":
@@ -593,8 +594,11 @@ class MCDSaveFile:
         writer.dump(self._src_file, merge_at=(block.block_id + 1) * 0x2000)
 
         buf.buf_disable_alt()
-        core.info(f"Changes applied to {self._src_file}:")
-        for c_path, c_val in self.changes.items():
+        core.info(f"Changes applied to .../{'/'.join(self._src_file.parts[-2:])}:")
+        for i, (c_path, c_val) in enumerate(self.changes.items()):
+            if i >= 10:
+                core.info(f"  ...and {len(self.changes) - i} more")
+                break
             core.info(f"  [{c_path}] => {c_val}")
         buf.buf_enable_alt()
         self.changes.clear()
@@ -1013,7 +1017,7 @@ class MCDFileEditor:
                         self._close_notif()
                         self._update_content()
                         return
-                    elif key == "\x1B":
+                    elif key in ("q", "Q", "\x1B"):
                         self._close_notif()
                         return
                 else:
@@ -1113,7 +1117,7 @@ class MCDFileEditor:
                                 width=0,
                                 height=0,
                                 title=f" {str(path)} ",
-                                hint=" [Left/Right]: cycle, [Enter]: save, [Esc]: cancel ",
+                                hint=" [Left/Right]: cycle, [Enter]: save, [q]: cancel ",
                                 is_input=True,
                                 prompt=[f"Select Enum Value"],
                                 path=path,

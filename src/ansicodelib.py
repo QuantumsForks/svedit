@@ -50,11 +50,8 @@ class ANSIBuffer:
         sys.stdout.write("\033[2J")
 
     @staticmethod
-    def buf_write(*s: Any, sep: str = ""):
-        ss: list[str] = []
-        for c in s:
-            ss.append(str(c))
-        sys.stdout.write(sep.join(ss))
+    def buf_write(*s: Any, sep: str = " "):
+        sys.stdout.write(sep.join(map(str, s)))
 
     @staticmethod
     def buf_scroll_up(lines: int = 1):
