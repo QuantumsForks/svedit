@@ -112,7 +112,8 @@ request, and wait for it to be accepted.
 
 > [!note]
 > If you'd like, you can add your GitHub name, etc... (no links, sorry!) in your XML file's root 
-node as an attribute `contributor`. Like this:\
+node as an attribute `contributor`.\
+> Like this:
 > ```xml
 > <svedit pattern="..." generic="..." contributor="QuantumsSources"/>
 > ```
@@ -164,7 +165,7 @@ To help out with bugs or features, here's what you need to do:
 ## Footnotes
 > [!important]
 > Much like `svedit` downloads **DuckStation's game database** off of GitHub, `svedit`'s entire format library
-(aka, anything in `./fmts/`), which are also licensed under GPLv3 (or later), are freely available for download by
+(aka, anything in `./fmts/`), which, as part of `svedit`, is also licensed under GPLv3 (or later), is freely available for download by
 anyone at all.
 > 
 > _No, you don't need to ask for permission_, go right ahead.
