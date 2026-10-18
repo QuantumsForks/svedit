@@ -9,6 +9,14 @@ Made with ♥ by quantum.
 <sub><b>Figure 1</b>: Block picker example, with block <code>0x03</code> selected</sub>
 </div>
 
+> [!important]
+> `svedit`'s format library is currently **very limited**!\
+> Support is limited to one game, Symphony of the Night, and even then,
+> it's still not completely finished!
+> 
+> If you're interested in adding support for a game you really like, scroll
+> down to **Contributing**!
+
 ## Features
 ### Intuitive UI, built with UX in mind
 - `svedit` features an intuitive, easy to use, terminal interface.
@@ -63,21 +71,22 @@ on Unix-based systems.
 > A native macOS release will depend solely on contributions or community forks.
 
 ### Prerequisites
-To install `svedit`, you'll need...
-1. python 3.12+;
+To install and build `svedit`, you'll need...
+1. python 3.10+ (3.12+ recommended);
 2. nuitka (arch: `yay -S nuitka`, deb: `sudo apt install nuitka`, etc...);
 3. pyyaml (arch: `sudo pacman -S python-yaml`, deb: `sudo apt install python3-yaml`, etc...)
 
 ### Instructions
 After installing the dependencies above...
 1. Clone this repository;
-2. Run the installation script inside:
-    ```bash
-    git clone https://github.com/QuantumsSources/svedit.git
-    cd svedit
-    python build.py
-    ```
-3. You can then delete the cloned repository.
+```bash
+git clone https://github.com/QuantumsSources/svedit.git
+cd svedit
+```
+2. Run the installation script inside;
+```bash
+python build.py
+```
 
 ## Contributing
 Thank you for showing interest in contributing to `svedit`!\
@@ -123,6 +132,9 @@ node as an attribute `contributor`.\
 > [!note]
 > Even if contributions are low, I can't promise quick responses!\
 > Thank you for your consideration, and please don't think I'm actively ghosting you!
+> 
+> If there are any issues with your contribution, I'll let you know what they are.
+> Additionally, if you have any questions or concerns, open an issue about it.
 
 ### 1.1. Updating Formats
 If you find a format that matches on one or more of the below criteria, you can also update it.
@@ -161,6 +173,9 @@ To help out with bugs or features, here's what you need to do:
 > [!note]
 > Even if contributions are low, I can't promise quick responses!\
 > Thank you for your consideration, and please don't think I'm actively ghosting you!
+> 
+> If there are any issues with your contribution, I'll let you know what they are.
+> Additionally, if you have any questions or concerns, open an issue about it.
 
 ## Footnotes
 > [!important]
@@ -168,7 +183,7 @@ To help out with bugs or features, here's what you need to do:
 (aka, anything in `./fmts/`), which, as part of `svedit`, is also licensed under GPLv3 (or later), is freely available for download by
 anyone at all.
 > 
-> _No, you don't need to ask for permission_, go right ahead.
+> _No_, you _don't_ need to ask for permission, go right ahead.
 
 > [!important]
 > `svedit` is actively tested out on multiple terminals.
