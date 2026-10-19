@@ -7,7 +7,7 @@ from pathlib import Path
 from subprocess import CompletedProcess
 from src.svedit_core import VERSION, VERSION_NAME
 
-BUILD_SCRIPT_VERSION = "1.1"
+BUILD_SCRIPT_VERSION = "1.2"
 
 def run(args: str|list[str]) -> CompletedProcess:
     return subprocess.run(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -65,6 +65,17 @@ if INSTALL_DIR.exists():
         shutil.rmtree(INSTALL_DIR)
         print("> cleaned old build files\n")
 
+def _get_time(s: float|int) -> str:
+    if s < 60:
+        return f"{s:.2f}s"
+    units = ["s", "m", "h"]
+    idx = 0
+    while s > 60:
+        s = s / 60
+        idx += 1
+    idx = min(len(units), idx)
+    return f"{int(s)}{units[idx]} {int(60 * (s - int(s)))}{units[idx - 1]}"
+
 print(f"> compiling svedit with build.py v{BUILD_SCRIPT_VERSION} (this might take a while!)")
 start = time.time()
 result = _build()
@@ -84,7 +95,7 @@ if result.returncode != 0:
     else:
         print("error: build failed.")
         sys.exit(1)
-print(f"> build complete in ~{(time.time() - start):.1f}s!")
+print(f"> build complete in {_get_time(time.time() - start)}!")
 
 DIST_DIR = Path("svedit.dist")
 BUILD_DIR = Path("svedit.build")
