@@ -264,14 +264,17 @@ def main(mods: dict, kwargs: dict, files: list):
                 err(f"> {reason}")
             return
 
+    selected_block = 0
     while True:
         try:
-            picker = CardPicker(file=files[0])
+            picker = CardPicker(file=files[0], selected_block=selected_block)
             result = picker.run()
         except KeyboardInterrupt:
             break
 
         if result is not None:
+            selected_block = result.block_id
+
             try:
                 viewer = MCDFileEditor(result, src_file=Path(files[0]))
                 viewer.run()

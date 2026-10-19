@@ -190,8 +190,8 @@ anyone at all.
 > 
 > Here's what you can expect:
 > 1. `kitty`: The one I use to develop `svedit`, best experience overall
-> 2. `alacritty` / `konsole`: Also on par with `kitty`
-> 3. `gnome-terminal`: You might experience occasional flickering, though nothing major.
+> 2. `alacritty`: Also on par with `kitty`
+> 3. `konsole` / `gnome-terminal`: You might experience some flickering, though usually nothing major.
 > 4. `tty`: Functional *(-ish)*, though with frequent flickers and no RGB color
 > 5. `cmd` / `powershell`: `svedit` is not tested on Windows or WSL.
 

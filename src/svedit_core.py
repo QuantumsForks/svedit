@@ -1,7 +1,7 @@
 from pathlib import Path
 
-VERSION = "1.2α"
-VERSION_NAME = "Alpaca"
+VERSION = "1.3α"
+VERSION_NAME = "Bison"
 MIN_SIZE = (80, 27)
 
 # Thanks DuckStation!

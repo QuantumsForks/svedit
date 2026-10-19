@@ -10,7 +10,8 @@ The file's root tag, that contains everything `svedit` needs to successfully rea
 to a PSX memory card block.
 
 ### Attributes
-1. `pattern` (`str`): Regex pattern that maps a specific format ID (like `DRAX02`) to a "generic" ID (like `DRAX`)
+1. `pattern` (`str`): Regex pattern that maps a specific format ID (like `DRAX02`) to a "generic"
+ID (like `DRAX`)
 2. `generic` (`str`): Value that specific IDs get mapped to. File name should be `<generic>.xml`
 3. `contributor` (`str`, optional): If you want, set this to your GitHub name, etc... (no links!)
 
@@ -26,7 +27,7 @@ to a PSX memory card block.
 2. `checksum`: One or many checksums that need to be recalculated on file save.
 3. `file`: The actual file structure.
 
-### Example
+### Examples
 ```xml
 <!-- From: DRAX.xml -->
 <svedit pattern="DRAX.." generic="DRAX" contributor="QuantumsSources">
@@ -39,12 +40,16 @@ Optionally, you can define custom "enums" to use around your file, if you have c
 take a set list of values, like `0x00` for `locked` and `0x01` for `unlocked`, for example.
 
 ### Attributes
-1. `id` (`str`): The ID of the enum you're defining.
+1. `id` (`str`): The ID of the `enum` you're defining.
 
 ### Contains
-1. `...`  (`int`): A list of values that the enum can assume.
+1. `...`  (`int`): A list of `int` values that the `enum` can assume.
 
-### Example:
+> [!important]
+> If an `enum` resolves to a value not contained in its referenced `enumdef`,
+> an `InvalidEnumItemError` is raised.
+
+### Examples
 ```xml
 <!-- From: DRAX.xml -->
 <enumdef id="relic">
@@ -55,13 +60,33 @@ take a set list of values, like `0x00` for `locked` and `0x01` for `unlocked`, f
 </enumdef>
 ```
 
+## Structure definitions (`structdef`)
+Optionally, you can also define custom "structs" to use around your file, if you have certain entries that are
+structured the exact same, like an item that has a `str` for name, `int` for damage, etc...
+
+### Attributes
+1. `id` (`str`): The ID of the `struct` you're defining.
+2. `type` (`str`, optional: `list`): How `svedit` should display this `struct`. Can be `list` or `dict`.
+
+### Contains:
+1. `...` (`Any supported`): The structure to be assumed wherever this `structdef` is referenced.
+
+### Examples
+```xml
+<structdef id="item" type="list">
+    <str name="name" length="8" encoding="ascii" display="Name"/>
+    <int name="damage" length="4" order="little" display="Damage"/>
+</structdef>
+```
+
 ## File checksums (`checksum`)
 Seeing as some PSX games use checksums to verify data integrity, `svedit` must support their use
 to calculate them on the fly.
 
 You can use multiple `checksum` tags, if the game has multiple checksum values.\
 Currently supported checksum types are:
-- `xor`
+- `sum`: Simple byte-summing checksum;
+- `xor`: XOR checksum;
 
 If your game uses a type not available, open an issue about it, and we'll work on it.\
 Alternatively, you could add it yourself and open a pull request to have it added.
@@ -78,7 +103,7 @@ in format `0x<start>:0x<end>`.
 > `start`, `end`, and `offset` are relative to the start of the block.\
 > The formula for absolute offsets is `0x2000 * (<block_id> + 1) + <value>`.
 
-### Example
+### Examples
 ```xml
 <!-- Range and offset values should go from 0x0 to 0x1FFF, as 0x2000 would be out of the block stream. -->
 <checksum type="xor" range="0x0:0x1FFE" offset="0x1FFF" length="1"/>
@@ -86,22 +111,22 @@ in format `0x<start>:0x<end>`.
 
 ## File definition (`file`)
 ### Attributes
-1. `unfinished` (`bool`, optional: `False`): Lets the user know not every single option may be available
+1. `unfinished` (`bool`, optional: `false`): Lets the user know not every single option may be available
 in this version of the format file.
 
 ### Contains
 1. `...` (`Any supported`, see list below.): A list of every value in the save file.
 
 # Supported types
-`svedit`, currently, supports and parses the following Python types:
+`svedit`, currently, supports and parses the following tags:
 
 ## `blank`
-While not a Python type, you can use the `blank` tag to skip forward a set of bytes.
+Using the `blank` tag, the reader will skip forward a set of bytes.
 
 ### Attributes
 1. `length` (`int`): How many bytes to skip.
 
-### Example
+### Examples
 ```xml
 <blank length="4"/>
 ```
@@ -113,7 +138,7 @@ While not a Python type, you can use the `blank` tag to skip forward a set of by
 3. `length` (`int`): How many bytes to read.
 4. `encoding` (`str`, optional: `ascii`): What encoding to use.
 
-### Example
+### Examples
 ```xml
 <str name="name" length="8" encoding="ascii" display="Name"/>
 ```
@@ -124,9 +149,9 @@ While not a Python type, you can use the `blank` tag to skip forward a set of by
 2. `display` (`str`, optional): An optional, "human-friendly" name to display on the TUI.
 3. `length` (`int`): How many bytes to read.
 4. `order` (`str`, optional: `big`): What byte order to use when parsing. Can be `big` or `little`.
-5. `signed` (`bool`, optional: `False`): Whether this is a signed or unsigned integer.
+5. `signed` (`bool`, optional: `false`): Whether this is a signed or unsigned integer.
 
-### Example
+### Examples
 ```xml
 <int name="level" length="4" order="little" display="Level"/>
 ```
@@ -138,7 +163,7 @@ While not a Python type, you can use the `blank` tag to skip forward a set of by
 3. `length` (`int`): How many bytes to read. Can be `4` or `8` (for a double)
 4. `order` (`str`, optional: `big`): What byte order to use when parsing. Can be `big` or `little`.
 
-### Example
+### Examples
 ```xml
 <float name="box_x" length="4" order="little" display="Box X position"/>
 ```
@@ -149,41 +174,96 @@ While not a Python type, you can use the `blank` tag to skip forward a set of by
 2. `display` (`str`, optional): An optional, "human-friendly" name to display on the TUI.
 3. `length` (`int`): How many bytes to read.
 
-### Example
+### Examples
 ```xml
 <bool name="unlocked_door" display="Door Unlocked" length="1"/>
 ```
 
-## `tuple` / `list` / `dict`
+> [!note]
+> If a `bool` tag is 1 byte long, it assumes `0x00` as `False` and anything else as `True`.
+> Else, also accepts `yes`, `true`, and `1` (`0x31`) as `True`.
+> 
+> If your game's structure disagrees, use an `enum` instead.\
+
+## `list` / `dict`
 ### Attributes
-1. `name` (`str`): A name that identifies the entry in the save file. Must be unique on that level.\
-   In the case of `dict`, a child's `name` is also used as the key of the key-value pair.\
-   In the case of `tuple` / `dict`, a child's `name` does not appear.
+1. `name` (`str`): A name that identifies the entry in the save file. Must be unique on that level.
+> [!note]
+> In the case of `dict`, a child's `name` is also used as the key to the key-value pair.\
+> In the case of `list`, a child's `name` only appears if `display` isn't set. Else, `display` is used and
+> `name` is omitted.
 2. `display` (`str`, optional): An optional, "human-friendly" name to display on the TUI.
 
 ### Contains
-1. `...` (`Any supported`): A list of every value inside the `tuple` / `list`
+1. `...` (`Any supported`): A list of every value inside the `list` / `dict`
 
-### Example (tuple)
+### Examples
 ```xml
-<!-- From: DRAX.xml -->
-<tuple name="playtime" display="Playtime">
+<!-- From: DRAX.xml, represents a 'list' type -->
+<list name="playtime" display="Playtime">
     <int name="hours" length="4" order="little" display="Hours"/>
     <int name="minutes" length="4" order="little" display="Minutes"/>
     <int name="seconds" length="4" order="little" display="Seconds"/>
-</tuple>
+</list>
+```
+
+```xml
+<!-- From: DRAX.xml, represents a 'dict' type -->
+<dict name="relics" display="Relics">
+    <enum id="relic" name="bat_form" display="Soul of Bat" length="1"/>
+    <enum id="relic" name="bat_fire" display="Fire of Bat" length="1"/>
+    <enum id="relic" name="bat_echo" display="Echo of Bat" length="1"/>
+    <!-- etc... -->
+</dict>
 ```
 
 ## `enum`
-While also not a (regular) Python type, you can use enums defined by `enumdef` in the `enums` tag. 
+While not a regular type, you can use `enums` defined by `enumdef`.
 
 ### Attributes
 1. `name` (`str`): A name that identifies the entry in the save file. Must be unique on that level.
 2. `display` (`str`, optional): An optional, "human-friendly" name to display on the TUI.
 3. `length` (`int`): How many bytes to read.
-4. `id` (`str`): The ID of the enumdef this enum references.
-### Example
+4. `id` (`str`): The ID of the `enumdef` this `enum` references.
+
+### Examples
 ```xml
 <!-- From: DRAX.xml -->
 <enum id="relic" name="holy_snorkel" display="Holy Symbol" length="1"/>
+```
+
+## `struct`
+Similarly to `enum`, you can use `structs` defined by `structdef`.
+
+### Attributes
+1. `name` (`str`): A name that identifies the entry in the save file. Must be unique on that level.
+2. `display` (`str`, optional): An optional, "human-friendly" name to display on the TUI.
+3. `id` (`str`): The ID of the `structdef` this `struct` references.
+
+### Examples
+```xml
+<list name="inventory" display="Inventory">
+    <struct id="item" name="slot_0" display="Slot 0"/>
+    <struct id="item" name="slot_1" display="Slot 1"/>
+    <struct id="item" name="slot_2" display="Slot 2"/>
+</list>
+```
+
+`struct` tags are completely interchangeable with their `type`.\
+For example, as the `item` `structdef` has `type="list"`, the above example is the same as this:
+```xml
+<list name="inventory" display="Inventory">
+    <list name="slot_0" display="Slot 0">
+        <str name="name" length="8" encoding="ascii" display="Name"/>
+        <int name="damage" length="4" order="little" display="Damage"/>
+    </list>
+    <list name="slot_1" display="Slot 1">
+        <str name="name" length="8" encoding="ascii" display="Name"/>
+        <int name="damage" length="4" order="little" display="Damage"/>
+    </list>
+    <list name="slot_2" display="Slot 2">
+        <str name="name" length="8" encoding="ascii" display="Name"/>
+        <int name="damage" length="4" order="little" display="Damage"/>
+    </list>
+</list>
 ```

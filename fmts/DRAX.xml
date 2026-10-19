@@ -1,9 +1,15 @@
 <svedit pattern="DRAX.." generic="DRAX" contributor="QuantumsSources">
     <enumdef id="relic">
-        <int name="in-use">3</int>
-        <int name="unlocked">1</int>
-        <int name="locked">0</int>
+        <int name="in-use" display="In Use">3</int>
+        <int name="unlocked" display="Unlocked">1</int>
+        <int name="locked" display="Locked">0</int>
     </enumdef>
+
+    <structdef id="playtime" display="list">
+        <int name="hours" length="4" order="little" display="Hours"/>
+        <int name="minutes" length="4" order="little" display="Minutes"/>
+        <int name="seconds" length="4" order="little" display="Seconds"/>
+    </structdef>
 
     <file unfinished="true">
         <dict name="DRAX" display="Save File">
@@ -11,11 +17,7 @@
             <blank length="4"/>
             <int name="level" length="4" order="little" display="Level"/>
             <int name="gold" length="4" order="little" display="Money"/>
-            <tuple name="playtime" display="Playtime">
-                <int name="hours" length="4" order="little" display="Hours"/>
-                <int name="minutes" length="4" order="little" display="Minutes"/>
-                <int name="seconds" length="4" order="little" display="Seconds"/>
-            </tuple>
+            <struct id="playtime" name="playtime" display="Playtime"/>
             <blank length="10"/>
             <int name="rooms" length="2" order="little" display="Explored Rooms"/>
             <blank length="12"/>

@@ -1,4 +1,5 @@
 import os
+import signal
 import struct
 import svedit_db as db
 import svedit_core as core
@@ -15,52 +16,44 @@ class MalformedFormatFile(Exception):
 
 class MCDNodeData:
     def __init__(self, e: ElementTree.Element):
+        self.e = e
         self.type = e.tag
 
         name = e.attrib.get("name")
-        if not name and e.tag not in ("blank", "checksum"):
+        if not name and not e.tag == "blank":
             raise MalformedFormatFile(f"Found file node of type {self.type} without 'name' attribute")
 
         self.name = name or "blank"
         self.display = e.attrib.get("display", self.name)
+        self.children = []
 
-        length_attr = e.attrib.get("length")
-        if length_attr is not None:
+        length_attr = e.attrib.get("length", None)
+        if self.type == "bool":
+            self.length = 1
+        elif length_attr is not None:
             try:
                 self.length = int(length_attr, 0)
             except ValueError:
                 raise MalformedFormatFile(f"Invalid 'length' value '{length_attr}' in node '{self.name or self.type}'")
-        elif self.type not in ("tuple", "dict", "list"):
+        elif self.type not in ("dict", "list", "struct"):
             raise MalformedFormatFile(f"Found file node of type '{self.type}' without 'length' attribute")
         else:
             self.length = 0
-
-    @property
-    def Type(self) -> str:
-        return self.type
-
-    @property
-    def Length(self) -> int:
-        return self.length
-
-    @property
-    def Name(self) -> str:
-        return self.name
-
-    @property
-    def DisplayName(self) -> str:
-        return self.display
+            for child in e:
+                self.children.append(MCDNodeData(child))
 
 class MCDEnumItem:
-    def __init__(self, name: str, value: int):
+    def __init__(self, name: str, value: int, display: str = ""):
         self.name = name
         self.value = value
+        self.display = display if display else self.name
 
     def __str__(self) -> str:
-        return f"EnumItem {self.name}: {self.value}"
+        display = f" ({self.display})" if self.display != self.name else ""
+        return f"EnumItem {self.name}{display}: {self.value}"
 
     def __repr__(self) -> str:
-        return f"MCDEnumItem(name='{self.name}', value={self.value})"
+        return f"MCDEnumItem(name='{self.name}', value={self.value}, display={self.display})"
 
 class InvalidEnumItemError(Exception):
     pass
@@ -70,8 +63,8 @@ class MCDEnum:
         self.name = name
         if values is not None:
             for item in items:
-                type_name = type(item.value).__name__
-                if type_name not in values:
+                if item.value not in values:
+                    type_name = type(item.value).__name__
                     raise InvalidEnumItemError(f"Value {type_name} not in valid values for enum {name}!")
         self.items = items
 
@@ -92,6 +85,12 @@ class MCDEnum:
             if item == valid.value:
                 return True
         return False
+
+class MCDStruct:
+    def __init__(self, name: str, nodes: list[MCDNodeData], *, struct_type: str = "list"):
+        self.id = name
+        self.nodes = nodes
+        self.display = struct_type
 
 class MCDSaveFilePath:
     def __init__(self, a: str|int|list[str|int]|tuple[str|int]|MCDSaveFilePath):
@@ -157,15 +156,15 @@ ValidSaveFilePath: TypeAlias = str|list[str]|tuple[str]|MCDSaveFilePath
 
 class MCDSaveFile:
     def _get_value_from_element(self, e: ElementTree.Element, *, value: Any = None, r: MCDReader|None = None) -> Any:
-        if e.tag in ("blank", "checksum"):
+        if e.tag == "blank":
             if r is not None:
-                r.jump(MCDNodeData(e).Length)
+                r.jump(MCDNodeData(e).length)
             return None
 
         if value is not None:
             target = value
-        elif r is not None and e.tag not in ("tuple", "dict", "list"):
-            target = r.read(MCDNodeData(e).Length)
+        elif r is not None and e.tag not in ("dict", "list", "struct"):
+            target = r.read(MCDNodeData(e).length)
         else:
             target = e.text
 
@@ -194,50 +193,66 @@ class MCDSaveFile:
                 fmt = f"{order}f" if len(target) == 4 else f"{order}d"
                 return struct.unpack(fmt, target)[0]
             return float(target) if target is not None else 0.0
-        elif e.tag == "tuple":
-            _tuple = []
-            for node in e:
-                node_data = MCDNodeData(node)
-                if node_data.Type in ("blank", "checksum"):
-                    if r is not None:
-                        r.jump(node_data.Length)
-                    continue
-                _tuple.append(self._get_value_from_element(node, r=r))
-            return tuple(_tuple)
         elif e.tag == "dict":
             _dict = {}
             for node in e:
                 node_data = MCDNodeData(node)
-                if node_data.Type in ("blank", "checksum"):
+                if node_data.type == "blank":
                     if r is not None:
-                        r.jump(node_data.Length)
+                        r.jump(node_data.length)
                     continue
-                key = node_data.Name if node_data.Name is not None else node.tag
+                key = node_data.name if node_data.name is not None else node.tag
                 _dict[key] = self._get_value_from_element(node, r=r)
             return _dict
         elif e.tag == "list":
             _list = []
             for node in e:
                 node_data = MCDNodeData(node)
-                if node_data.Type in ("blank", "checksum"):
+                if node_data.type == "blank":
                     if r is not None:
-                        r.jump(node_data.Length)
+                        r.jump(node_data.length)
                     continue
                 _list.append(self._get_value_from_element(node, r=r))
             return _list
         elif e.tag == "enum":
-            enum_id = e.attrib.get("id")
+            enum_id = e.attrib.get("id", None)
             order = "little" if e.attrib.get("order", "big").lower() == "little" else "big"
 
             if enum_id is None:
                 return None
-            enum = self._enums.get(enum_id)
-            if enum is None:
+            enum_def = self._enums.get(enum_id, None)
+            if enum_def is None:
                 return None
             if not isinstance(target, bytes):
                 return None
             value = int.from_bytes(target, order)
-            return enum.GetEnumItemFromValue(value)
+            return enum_def.GetEnumItemFromValue(value)
+        elif e.tag == "struct":
+            struct_id = e.attrib.get("id", None)
+            if struct_id is None:
+                return None
+            struct_def = self._structs.get(struct_id, None)
+            if struct_def is None:
+                return None
+
+            if struct_def.display == "list":
+                _struct = []
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        if r is not None:
+                            r.jump(node_data.length)
+                        continue
+                    _struct.append(self._get_value_from_element(node_data.e, r=r))
+                return _struct
+            elif struct_def.display == "dict":
+                _struct = {}
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        if r is not None:
+                            r.jump(node_data.length)
+                        continue
+                    _struct[node_data.name] = self._get_value_from_element(node_data.e, r=r)
+                return _struct
 
         return target if target is not None else ""
 
@@ -247,6 +262,7 @@ class MCDSaveFile:
 
         self._src_file = src_file
         self._enums: dict[str, MCDEnum] = {}
+        self._structs: dict[str, MCDStruct] = {}
         self._stream = data_block.stream
 
         reader = MCDReader(self._stream)
@@ -256,34 +272,47 @@ class MCDSaveFile:
         if _file is None:
             raise MalformedFormatFile("Format file should have a 'file' node. None found.")
 
-        for enum in root.findall("enumdef"):
-            enum_id = enum.attrib.get("id")
+        for enum_node in root.findall("enumdef"):
+            enum_id = enum_node.attrib.get("id", None)
             if enum_id is None:
                 raise MalformedFormatFile("Found nameless enum definition")
-            enum_values: list[tuple[str, Any]] = []
-            for enum_item in enum:
-                item_name = enum_item.attrib.get("name")
+            enum_values: dict[str, tuple[int, str]] = {}
+            for enum_item in enum_node:
+                item_name = enum_item.attrib.get("name", None)
                 if item_name is None:
                     raise MalformedFormatFile(f"Found nameless enum item definition for enum {enum_id}")
                 item_value = self._get_value_from_element(enum_item)
                 if item_value is None:
                     raise MalformedFormatFile(f"Found valueless enum item definition for enum {enum_id}")
-                enum_values.append((item_name, item_value))
+                if not isinstance(item_value, int):
+                    raise MalformedFormatFile(f"Found enum item definition for enum {enum_id} with non-int value")
+                item_display = enum_item.attrib.get("display", "")
+                enum_values[item_name] = (item_value, item_display)
             self._enums[enum_id] = MCDEnum(enum_id, [
-                MCDEnumItem(name, value) for name, value in enum_values
+                MCDEnumItem(name, value, display) for name, (value, display) in enum_values.items()
             ], values=[
-                type(value).__name__ for _, value in enum_values
+                value for (value, _) in enum_values.values()
             ])
+
+        for struct_node in root.findall("structdef"):
+            struct_id = struct_node.attrib.get("id", None)
+            if struct_id is None:
+                raise MalformedFormatFile("Found nameless struct definition")
+            struct_type = struct_node.attrib.get("type", "list")
+            struct_values: list[MCDNodeData] = []
+            for struct_item in struct_node:
+                struct_values.append(MCDNodeData(struct_item))
+            self._structs[struct_id] = MCDStruct(struct_id, struct_values, struct_type=struct_type)
 
         _result: dict[str, Any] = {}
         for node in _file:
             node_data = MCDNodeData(node)
-            if node_data.Type in ("blank", "checksum"):
-                reader.jump(node_data.Length)
+            if node_data.type == "blank":
+                reader.jump(node_data.length)
                 continue
             node_value = self._get_value_from_element(node, r=reader)
-            if node_data.Name:
-                _result[node_data.Name] = node_value
+            if node_data.name:
+                _result[node_data.name] = node_value
 
         self._root = _file
         self._content = _result
@@ -292,29 +321,26 @@ class MCDSaveFile:
         self.changes: dict[MCDSaveFilePath, Any] = { }
         self.block = data_block
 
-    def _get_value_from_path_in_content(self, path: MCDSaveFilePath) -> Any:
+    def _get_content_value(self, path: MCDSaveFilePath) -> Any:
         current = self._content
         for a in path:
             if isinstance(current, dict):
                 current = current.get(a)
-            elif isinstance(current, (list, tuple)):
+            elif isinstance(current, list):
                 current = current[int(a)]
         return current
 
     def _serialize_element(self, e: ElementTree.Element, path: MCDSaveFilePath, writer: MCDWriter):
         node_data = MCDNodeData(e)
 
-        if e.tag in ("blank", "checksum"):
-            writer.write(b'\x00' * node_data.Length)
+        if e.tag == "blank":
+            writer.write(b'\x00' * node_data.length)
             return
 
-        if path in self.changes:
-            val = self.changes[path]
-        else:
-            val = self._get_value_from_path_in_content(path)
+        val = self.GetFileEntryValue(path)
 
         packed_bytes = b''
-        length = node_data.Length
+        length = node_data.length
 
         if e.tag == "int":
             order = "little" if e.attrib.get("order", "big").lower() == "little" else "big"
@@ -357,12 +383,12 @@ class MCDSaveFile:
                 except (ValueError, TypeError):
                     enum_val = 0
             packed_bytes = enum_val.to_bytes(length, order)
-        elif e.tag in ("tuple", "list"):
+        elif e.tag == "list":
             idx = 0
             for child in e:
                 child_data = MCDNodeData(child)
-                if child_data.Type in ("blank", "checksum"):
-                    writer.jump(child_data.Length)
+                if child_data.type == "blank":
+                    writer.jump(child_data.length)
                     continue
                 self._serialize_element(child, path / idx, writer)
                 idx += 1
@@ -370,23 +396,80 @@ class MCDSaveFile:
         elif e.tag == "dict":
             for child in e:
                 child_data = MCDNodeData(child)
-                if child_data.Type in ("blank", "checksum"):
-                    writer.jump(child_data.Length)
+                if child_data.type == "blank":
+                    writer.jump(child_data.length)
                     continue
-                key = child_data.Name if child_data.Name is not None else child.tag
+                key = child_data.name if child_data.name is not None else child.tag
                 self._serialize_element(child, path / key, writer)
+            return
+        elif e.tag == "struct":
+            struct_id = e.attrib.get("id")
+            if not struct_id or struct_id not in self._structs:
+                return
+            struct_def = self._structs[struct_id]
+            if struct_def.display == "list":
+                idx = 0
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        writer.jump(node_data.length)
+                        continue
+                    self._serialize_element(node_data.e, path / idx, writer)
+                    idx += 1
+            elif struct_def.display == "dict":
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        writer.jump(node_data.length)
+                        continue
+                    key = node_data.name if node_data.name is not None else node_data.e.tag
+                    self._serialize_element(node_data.e, path / key, writer)
             return
 
         if packed_bytes:
             writer.write(packed_bytes)
 
-    @staticmethod
-    def _find_from_name(e: ElementTree.Element, name: str) -> ElementTree.Element|None:
-        if e.tag in ("list", "tuple"):
-            name = int(name, 0)
-            for i, node in enumerate(e):
-                if name == i:
+    def _find_from_name(self, e: ElementTree.Element, name: str) -> ElementTree.Element|None:
+        if not name:
+            return None
+
+        if e.tag == "list":
+            try:
+                target_idx = int(name, 0)
+            except ValueError:
+                return None
+            non_blank_idx = 0
+            for node in e:
+                if MCDNodeData(node).type == "blank":
+                    continue
+                if non_blank_idx == target_idx:
                     return node
+                non_blank_idx += 1
+            return None
+        elif e.tag == "struct":
+            struct_id = e.attrib.get("id")
+            if not struct_id or struct_id not in self._structs:
+                return None
+            struct_def = self._structs[struct_id]
+            if struct_def.display == "list":
+                try:
+                    target_idx = int(name, 0)
+                except ValueError:
+                    return None
+                non_blank_idx = 0
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        continue
+                    if non_blank_idx == target_idx:
+                        return node_data.e
+                    non_blank_idx += 1
+                return None
+            else:
+                for node_data in struct_def.nodes:
+                    if node_data.type == "blank":
+                        continue
+                    node_name = node_data.name if node_data.name != "blank" else node_data.e.tag
+                    if node_data.name == name or node_name == name:
+                        return node_data.e
+                return None
         else:
             for node in e:
                 if node.attrib.get("name", "") == name:
@@ -410,11 +493,11 @@ class MCDSaveFile:
         for a in path:
             if isinstance(current, dict):
                 current = current.get(a)
-            elif isinstance(current, (list, tuple)):
+            elif isinstance(current, list):
                 try:
                     a = int(a, 0)
                 except TypeError:
-                    raise TypeError(f"Expected numerical index for 'list'/'tuple', got '{a}'")
+                    raise TypeError(f"Expected numerical index for 'list', got '{a}'")
                 current = current[a]
             else:
                 raise TypeError(f"Found non-iterable type '{type(current).__name__}' in the middle of path.")
@@ -473,17 +556,17 @@ class MCDSaveFile:
     def GetFileEntryByteLength(self, path: ValidSaveFilePath) -> int:
         path = MCDSaveFilePath(path)
         node = self._get_node_from_path(path)
-        return MCDNodeData(node).Length
+        return MCDNodeData(node).length
 
     def GetInputMaxLength(self, path: ValidSaveFilePath) -> int:
         path = MCDSaveFilePath(path)
         node = self._get_node_from_path(path)
         node_data = MCDNodeData(node)
 
-        if node_data.Type == "str":
-            return node_data.Length
-        elif node_data.Type == "int":
-            length = node_data.Length
+        if node_data.type == "str":
+            return node_data.length
+        elif node_data.type == "int":
+            length = node_data.length
             signed = node.attrib.get("signed", "false").lower() == "true"
             if signed:
                 max_val = (2 ** (8 * length - 1)) - 1
@@ -491,9 +574,9 @@ class MCDSaveFile:
             else:
                 max_val = (2 ** (8 * length)) - 1
                 return max(len(str(max_val)), length * 2 + 2)
-        elif node_data.Type == "float":
+        elif node_data.type == "float":
             return 20
-        elif node_data.Type == "bool":
+        elif node_data.type == "bool":
             return 5
         return 15
 
@@ -514,13 +597,13 @@ class MCDSaveFile:
         node = self._get_node_from_path(path)
         node_data = MCDNodeData(node)
 
-        if node_data.Type == "int":
+        if node_data.type == "int":
             try:
                 parsed_value = int(raw_input, 0)
             except ValueError:
                 raise ValueError("Invalid integer format.")
 
-            length = node_data.Length
+            length = node_data.length
             signed = node.attrib.get("signed", "false").lower() == "true"
 
             if signed:
@@ -533,20 +616,20 @@ class MCDSaveFile:
             if not (min_val <= parsed_value <= max_val):
                 raise ValueError(f"Value out of bounds! Must be between {min_val} and {max_val} for {length} byte(s).")
             return parsed_value
-        elif node_data.Type == "float":
+        elif node_data.type == "float":
             try:
                 return float(raw_input)
             except ValueError:
                 raise ValueError("Invalid float format.")
-        elif node_data.Type == "bool":
+        elif node_data.type == "bool":
             val_lower = raw_input.strip().lower()
             if val_lower in ("true", "1", "yes"):
                 return True
             if val_lower in ("false", "0", "no"):
                 return False
             raise ValueError("Boolean must be true/false, 1/0, or yes/no.")
-        elif node_data.Type == "str":
-            length = node_data.Length
+        elif node_data.type == "str":
+            length = node_data.length
             encoding = node.attrib.get("encoding", "ascii")
             encoded = raw_input.encode(encoding)
             if len(encoded) > length:
@@ -563,10 +646,10 @@ class MCDSaveFile:
         if file_node is not None:
             for node in file_node:
                 node_data = MCDNodeData(node)
-                if node_data.Type in ("blank", "checksum"):
-                    writer.jump(node_data.Length)
+                if node_data.type == "blank":
+                    writer.jump(node_data.length)
                     continue
-                key = node_data.Name if node_data.Name is not None else node.tag
+                key = node_data.name if node_data.name is not None else node.tag
                 self._serialize_element(node, MCDSaveFilePath(key), writer)
 
             for checksum_node in root.findall("checksum"):
@@ -576,19 +659,27 @@ class MCDSaveFile:
                 cs_length = int(checksum_node.attrib.get("length", "1"), 0)
                 cs_order = str(checksum_node.attrib.get("order", "big")).lower()
                 if cs_order not in ("big", "little"):
-                    raise
+                    raise ValueError(f"Expected checksum 'order' to be 'big' or 'little', got '{cs_order}'")
 
                 start_str, end_str = cs_range.split(":")
                 start_pos = 0x2000 * (self.block.block_id + 1) + int(start_str, 0)
                 end_pos = 0x2000 * (self.block.block_id + 1) + int(end_str, 0)
                 target_data = writer.read_at(start_pos, end_pos - start_pos)
 
-                if cs_type == "xor":
+                if cs_type == "sum":
+                    chk = 0
+                    for b in target_data:
+                        chk += b
+                    cs_bytes = chk.to_bytes(cs_length, cs_order)
+                    writer.write_at(cs_offset, cs_bytes)
+                elif cs_type == "xor":
                     chk = 0
                     for b in target_data:
                         chk ^= b
                     cs_bytes = chk.to_bytes(cs_length, cs_order)
                     writer.write_at(cs_offset, cs_bytes)
+                else:
+                    raise ValueError(f"Unknown checksum type: '{cs_type}'")
 
         block.stream = bytes(writer.readall())
         writer.dump(self._src_file, merge_at=(block.block_id + 1) * 0x2000)
@@ -601,6 +692,7 @@ class MCDSaveFile:
                 break
             core.info(f"  [{c_path}] => {c_val}")
         buf.buf_enable_alt()
+
         self.changes.clear()
         raise UserExitCommand
 
@@ -644,16 +736,16 @@ class MCDFileEditor:
         self._mapped_id = cmn.get_mapped_format(self._format_id)
         try:
             self._format_file_path = cmn.get_format_file(self._format_id)
-        except cmn.UnknownFormatError as e:
-            cmn.err(e)
-            raise KeyboardInterrupt
-        if not self._format_file_path:
-            return
+            if not self._format_file_path:
+                return
 
-        root = ElementTree.parse(self._format_file_path).getroot()
-        self._save_file = MCDSaveFile(root, block, src_file)
+            root = ElementTree.parse(self._format_file_path).getroot()
+            self._save_file = MCDSaveFile(root, block, src_file)
+            self._content = self._save_file.RawContent
+        except cmn.UnknownFormatError:
+            self._format_file_path = ""
+            self._content = {}
 
-        self._content = self._save_file.RawContent
         self._pretty_content: list[tuple[str, MCDSaveFilePath, bool, bool]] = []
         self._collapsed_paths: set[MCDSaveFil_save_fileePath] = set()
         self._current_line = 0
@@ -686,7 +778,7 @@ class MCDFileEditor:
         def trunc(s: str, max_len: int = 60) -> str:
             return s if len(s) <= max_len else s[:max_len - 3] + "..."
 
-        is_expandable = isinstance(src, (tuple, list, dict)) and len(src) > 0
+        is_expandable = isinstance(src, (list, dict)) and len(src) > 0
         is_uneditable = self._save_file.IsEntryUnused(path)
 
         informal_name = self._save_file.GetFileEntryName(path)
@@ -705,7 +797,7 @@ class MCDFileEditor:
         elif isinstance(src, int):
             lines.append(
                 (f"{current_prefix}{name_display} {t_col}(int){res}: {src} {t_col}(0x{src:X}){res}", path, False, is_uneditable))
-        elif isinstance(src, (tuple, list)):
+        elif isinstance(src, list):
             t_name = type(src).__name__
             lines.append((f"{current_prefix}{name_display} {t_col}({t_name}, {len(src)}){res}:", path, True, is_uneditable))
             if path not in self._collapsed_paths:
@@ -719,7 +811,7 @@ class MCDFileEditor:
                     lines.extend(self._get_lines(str(k), v, path / k, child_prefix, i == len(items) - 1))
         elif isinstance(src, MCDEnumItem):
             lines.append(
-                (f"{current_prefix}{name_display} {t_col}(enum){res}: {src.name} {t_col}({src.value}, 0x{src.value:X}){res}",
+                (f"{current_prefix}{name_display} {t_col}(enum){res}: {src.display} {t_col}({src.name}, 0x{src.value:X}){res}",
                  path, False, is_uneditable)
             )
         else:
@@ -730,7 +822,8 @@ class MCDFileEditor:
         return lines
 
     def _update_content(self):
-        self._content = self._save_file.RawContent
+        if self._format_file_path:
+            self._content = self._save_file.RawContent
 
         frame = self._block.DirectoryFrame
         mapped_fmt = cmn.get_mapped_format(frame.FormatID)
@@ -739,38 +832,63 @@ class MCDFileEditor:
             if contributor is not None else ""
 
         matched = f" {colors.DIM}(matched to {mapped_fmt}.xml{contributor_message}){colors.RESET}"\
-            if frame.FormatID != mapped_fmt else ""
+            if (frame.FormatID != mapped_fmt) and self._format_file_path else ""
 
         product = frame.ProductCode.replace('-', f'{colors.DIM}-{colors.RESET}')
         game_name = db.get_db_entry(self.game_db, frame.ProductCode).localized_name
         dev_name = db.get_db_entry(self.game_db, frame.ProductCode).developer
-        message = f"─[ ↑ Metadata ↓ Save Data ]"
-        width = self.width - len(message) - 4
-
         self._pretty_content = [
-            (f"Region: {frame.Region} {colors.DIM}({frame.RegionCode}){colors.RESET}", MCDSaveFilePath(""), False, True),
+            (f"Region: {frame.RegionCode} {colors.DIM}({frame.Region}: {frame.RegionWorld}){colors.RESET}", MCDSaveFilePath(""), False, True),
             (f"Format: {frame.FormatID}{matched}", MCDSaveFilePath(""), False, True),
             (f"Product Code: {product} {colors.DIM}({game_name} by {dev_name}){colors.RESET}", MCDSaveFilePath(""), False, True),
-            ((message + "─" * width), MCDSaveFilePath(""), False, True),
-            ("", MCDSaveFilePath(""), False, True),
         ]
 
-        items = list(self._content.items())
-        for i, (k, v) in enumerate(items):
-            self._pretty_content.extend(self._get_lines(k, v, path=k, is_root=True))
-        if self._save_file.Unfinished:
-            message = "─[ This is a work in progress! ]"
+        if not self._format_file_path:
+            message = "─[ 404 Not Found! ]"
             width = self.width - len(message) - 4
 
             self._pretty_content.extend([
-                ("", MCDSaveFilePath(""), False, True),
                 ((message + "─" * width), MCDSaveFilePath(""), False, True),
-                ("The author of this file has marked it as unfinished!", MCDSaveFilePath(""), False, True),
-                ("Not every value, option, nook and cranny may be available for editing!", MCDSaveFilePath(""), False,
-                 True),
-                (f"{colors.ITALIC}If you'd like to help out, press [Enter] to generate a CONTRIBUTE file "
-                 f"for {mapped_fmt}.xml{colors.RESET}", MCDSaveFilePath(""), False, False),
+                ("", MCDSaveFilePath(""), False, True),
+                ("This file does not exist yet!", MCDSaveFilePath(""), False, True),
+                ("If you'd like, press [Enter] to create a CONTRIBUTE.py file for it!", MCDSaveFilePath(""), False, True),
             ])
+        else:
+            message = f"─[ ↑ Metadata ↓ Save Data ]"
+            width = self.width - len(message) - 4
+
+            self._pretty_content.extend([
+                ((message + "─" * width), MCDSaveFilePath(""), False, True),
+                ("", MCDSaveFilePath(""), False, True)
+            ])
+
+            items = list(self._content.items())
+            for i, (k, v) in enumerate(items):
+                self._pretty_content.extend(self._get_lines(k, v, path=k, is_root=True))
+            if self._save_file.Unfinished:
+                message = "─[ This is a work in progress! ]"
+                width = self.width - len(message) - 4
+
+                self._pretty_content.extend([
+                    ("", MCDSaveFilePath(""), False, True),
+                    ((message + "─" * width), MCDSaveFilePath(""), False, True),
+                    ("The author of this file has marked it as unfinished!", MCDSaveFilePath(""), False, True),
+                    ("Not every value, option, nook and cranny may be available for editing!", MCDSaveFilePath(""), False,
+                     True),
+                    (f"{colors.ITALIC}If you'd like to help out, press [Enter] to generate a CONTRIBUTE file "
+                     f"for {mapped_fmt}.xml{colors.RESET}", MCDSaveFilePath(""), False, False),
+                ])
+            else:
+                message = "─[ Found an issue? ]"
+                width = self.width - len(message) - 4
+
+                self._pretty_content.extend([
+                    ("", MCDSaveFilePath(""), False, True),
+                    ((message + "─" * width), MCDSaveFilePath(""), False, True),
+                    ("If you've found an issue in this file, you can do something about it!", MCDSaveFilePath(""), False, True),
+                    (f"{colors.ITALIC}If you'd like to contribute, press [Enter] to generate a CONTRIBUTE file "
+                     f"for {mapped_fmt}.xml{colors.RESET}", MCDSaveFilePath(""), False, False),
+                ])
 
     def _add_notif(self, params: Notification):
         self.open_notifs.append(params)
@@ -925,7 +1043,7 @@ class MCDFileEditor:
 
             line_text, path, is_expandable, is_uneditable = self._pretty_content[idx]
             is_selected = (idx == self._current_line)
-            is_create_new_sh = self._save_file.Unfinished and self._current_line == len(self._pretty_content) - 1
+            is_create_new_sh = self._current_line == len(self._pretty_content) - 1
 
             if is_expandable:
                 action = "expand" if path in self._collapsed_paths else "collapse"
@@ -979,8 +1097,8 @@ class MCDFileEditor:
                     buf.buf_write(f" {line_text}{padding}{right_text} ")
 
         cur.cur_goto(2, self.height)
-        sv_col = colors.DIM if not self._save_file.changes else ""
-        buf.buf_write(f"{colors.BOLD}[ [Q]: return to block picker, [Esc]: exit to terminal, "
+        sv_col = colors.DIM if self._format_file_path and (not self._save_file.changes) else ""
+        buf.buf_write(f"{colors.BOLD}[ [Q]: return, [Esc]: exit, "
                       f"{sv_col}[Y]: save changes ]{colors.RESET}")
         buf.buf_flush()
 
@@ -998,11 +1116,17 @@ class MCDFileEditor:
                 if top_notif.limit_choices:
                     if key in ("LEFT", "a", "A"):
                         top_notif.choice_index = (top_notif.choice_index - 1) % len(top_notif.limit_choices)
-                        top_notif.input_text = top_notif.limit_choices[top_notif.choice_index].name
+
+                        choice = top_notif.limit_choices[top_notif.choice_index]
+                        input_text = f"{choice.display} {colors.DIM}({choice.name}){colors.RESET}"
+                        top_notif.input_text = input_text
                         return
                     elif key in ("RIGHT", "d", "D"):
                         top_notif.choice_index = (top_notif.choice_index + 1) % len(top_notif.limit_choices)
-                        top_notif.input_text = top_notif.limit_choices[top_notif.choice_index].name
+
+                        choice = top_notif.limit_choices[top_notif.choice_index]
+                        input_text = f"{choice.display} {colors.DIM}({choice.name}){colors.RESET}"
+                        top_notif.input_text = input_text
                         return
                     elif key == "\r":
                         selected_item = top_notif.limit_choices[top_notif.choice_index]
@@ -1079,7 +1203,7 @@ class MCDFileEditor:
                     self._save_file.SerializeToFile(self._block, self._save_file.svedit_root)
             elif key == "\r":
                 line_text, path, is_expandable, is_uneditable = self._pretty_content[self._current_line]
-                is_create_new_sh = self._save_file.Unfinished and self._current_line == len(self._pretty_content) - 1
+                is_create_new_sh = self._current_line == len(self._pretty_content) - 1
                 if is_create_new_sh:
                     buf.buf_disable_alt()
                     mapped_fmt = cmn.get_mapped_format(self._frame.FormatID)
@@ -1113,6 +1237,9 @@ class MCDFileEditor:
                                     initial_idx = idx
                                     break
 
+                            choice = enum_choices[initial_idx]
+                            input_text = f"{choice.display} {colors.DIM}({choice.name}){colors.RESET}"
+
                             self._add_notif(Notification(
                                 width=0,
                                 height=0,
@@ -1123,10 +1250,10 @@ class MCDFileEditor:
                                 path=path,
                                 valid_choices=enum_choices,
                                 choice_index=initial_idx,
-                                initial_value=enum_choices[initial_idx].name
+                                initial_value=input_text
                             ))
                         else:
-                            dynamic_max_len = self._save_file.GetInputMaxLength(path)
+                            max_len = self._save_file.GetInputMaxLength(path)
                             self._add_notif(Notification(
                                 width=0,
                                 height=0,
@@ -1136,7 +1263,7 @@ class MCDFileEditor:
                                 prompt=[f"Edit '{path[-1]}' ({type(value).__name__})"],
                                 path=path,
                                 initial_value=str(value),
-                                max_len=dynamic_max_len
+                                max_len=max_len
                             ))
 
         self._current_line = max(0, min(self._current_line, max_lines - 1))
@@ -1170,7 +1297,7 @@ class MCDFileEditor:
             buf.buf_disable_alt()
             cur.cur_show()
             core.err("Download incomplete! Will retry on next launch!")
-            return None
+            return
         except cmn.NoInternetError:
             buf.buf_disable_alt()
             cur.cur_show()
@@ -1179,18 +1306,23 @@ class MCDFileEditor:
             core.err(f"      1. Download {core.DATABASE_URL};")
             core.err(f"      2. Place the downloaded file here: {core.YAML_PATH.absolute()};")
             core.err(f"      3. Launch svedit again;")
-            return None
+            return
         self._update_content()
+
+        def _on_sigwinch(_, __):
+            self.width, self.height = os.get_terminal_size()
+            self._update_content()
+        old_handler = signal.signal(signal.SIGWINCH, _on_sigwinch)
 
         try:
             while self.running:
-                self._update_content()
                 self.render()
                 key = cmn.get_key()
                 self.update(key)
         except KeyboardInterrupt:
             self.running = False
-            return None
+            return
         finally:
+            signal.signal(signal.SIGWINCH, old_handler)
             buf.buf_disable_alt()
             cur.cur_show()

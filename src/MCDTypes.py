@@ -106,6 +106,11 @@ class MCDDirectoryFrame:
         b'BE': "PAL",  # europe
         b'BI': "NTSC-J"  # japan
     }
+    WORLD_REGIONS = {
+        b'BA': "North America",
+        b'BE': "Europe, Australia, Asia",
+        b'BI': "Japan"
+    }
 
     def __init__(self, frame_stream: bytes, i: int):
         self._frame_id = i
@@ -120,17 +125,16 @@ class MCDDirectoryFrame:
         reader.jump(9)
 
         if status in (0xA0, 0xFF):
-            self._region = ""
+            self._region = b''
             self._product_code = ""
             self._format_id = ""
             return
 
-        region = reader.read(2)
-        self._region = MCDDirectoryFrame.VALID_REGIONS[region]
-        if self._region is None:
+        self._region = reader.read(2)
+        if MCDDirectoryFrame.VALID_REGIONS.get(self._region, None) is None:
             raise MCDBlock.MalformedBlockError(f"Unknown region '{region}' found!")
-        self._product_code = reader.read(10).decode()
-        self._format_id = reader.read(8).rstrip(b'\x00').decode()
+        self._product_code = reader.read(10).decode("ascii")
+        self._format_id = reader.read(8).rstrip(b'\x00').decode("ascii")
 
     @property
     def ID(self):
@@ -145,15 +149,16 @@ class MCDDirectoryFrame:
         return MCDDirectoryFrame.VALID_STATUS_BYTES[self._status]
 
     @property
-    def Region(self) -> str:
-        return self._region
+    def RegionCode(self) -> str:
+        return self._region.decode("ascii")
 
     @property
-    def RegionCode(self) -> str:
-        for code, region in self.VALID_REGIONS.items():
-            if self._region == region:
-                return code.decode()
-        return "UNK"
+    def Region(self) -> str:
+        return self.VALID_REGIONS.get(self._region, "UNK")
+
+    @property
+    def RegionWorld(self) -> str:
+        return self.WORLD_REGIONS.get(self._region, "World")
 
     @property
     def ProductCode(self):
@@ -176,7 +181,7 @@ class MCDDirectoryFrame:
         if self.Status in (0xA0, 0xFF):
             return f"MCDDirectoryFrame {self.ID} ({self.Status}: {self.StatusString})"
         return (f"MCDDirectoryFrame {self.ID} ({self.Status}: {self.StatusString}) with region "
-                f"'{self.Region}'|{self.ProductCode}/{self.FormatID}")
+                f"'{self.RegionCode}'|{self.ProductCode}/{self.FormatID}")
 
 
 class MCDBlockMeta:

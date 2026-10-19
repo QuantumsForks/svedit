@@ -164,6 +164,7 @@ import sys
 import shutil
 import subprocess
 from pathlib import Path
+from xml.etree import ElementTree
 
 try:
     print(f"> setting up contribution workspace for %fmt...")
@@ -188,7 +189,7 @@ try:
             sys.exit(1)
 
     if Path("svedit").exists():
-        if input("> found old clone directory. remove? [Y/n]").lower().strip() in ("y", "yes", ""):
+        if input("> found old clone directory. remove? [Y/n] ").lower().strip() in ("y", "yes", ""):
             print("> removed old clone directory")
             shutil.rmtree(Path("svedit"))
         else:
@@ -215,7 +216,7 @@ if TARGET_PATH.exists():
 shutil.copytree("svedit", TARGET_PATH)
 print(f"> moved cloned fork to '{TARGET_PATH}'")
 
-if input("> remove original clone location? [Y/n]").lower().strip() in ("y", "yes", ""):
+if input("> remove original clone location? [Y/n] ").lower().strip() in ("y", "yes", ""):
     print("> removed old clone directory")
     shutil.rmtree(Path("svedit"))
 os.chdir(TARGET_PATH)
@@ -231,14 +232,14 @@ if not xml_path.exists():
     root = ElementTree.Element("svedit", {
         "pattern": "", "generic": "", "contributor": ""
     })
+    root.append(ElementTree.Comment("Make sure to read XML_DOCS.md before editing!"))
+    
     file_node = ElementTree.SubElement(root, "file", {"unfinished": "true"})
     file_node.append(ElementTree.Comment("Add the file structure for %fmt here!"))
 
     tree = ElementTree.ElementTree(root)
     ElementTree.indent(tree, "    ")
     tree.write(xml_path)
-
-    open(xml_path, "w").close()
 
 COMMIT_PY = \"""\\
 %commit_py\""".replace("%branch", branch_name)
@@ -248,7 +249,7 @@ print("> created COMMIT.py")
 
 if input(f"\\n> open {xml_path} in your default editor? [Y/n] ").lower().strip() in ("y", "yes", ""):
     if os.environ.get("EDITOR", None) is None:
-        print("warn: $EDITOR is not set.")
+        print("warn: $EDITOR environment variable is not set.")
         editor = input("> what editor do you want to use? [cmd] ")
         if not editor:
             print("warn: no editor input! defaulting to 'nano'")
@@ -288,10 +289,14 @@ if shutil.which("gh") is None:
     print("       install from pacman, apt, etc...")
     sys.exit(1)
 
-if subprocess.run(["gh", "auth", "status"]).returncode != 0:
+if subprocess.run(["gh", "auth", "status"], stderr=subprocess.DEVNULL).returncode != 0:
     print("warn: you must be signed into the github cli")
-    if subprocess.run(["gh", "auth", "login"]).returncode != 0:
-        print("error: failed to authenticate. try again.")
+    try:
+        if subprocess.run(["gh", "auth", "login"], stderr=subprocess.STDOUT).returncode != 0:
+            print("error: failed to authenticate. try again.")
+            sys.exit(1)
+    except KeyboardInterrupt:
+        print("error: login canceled!")
         sys.exit(1)
 
 print(f"> pushing changes to format '%fmt'...")

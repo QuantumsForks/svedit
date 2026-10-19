@@ -10,7 +10,7 @@ from pathlib import Path
 from ansicodelib import ANSIBuffer as buf, ANSICursor as cur, ANSIColors as colors
 
 class CardPicker:
-    def __init__(self, file: str, *, force: int|None = -1):
+    def __init__(self, file: str, *, selected_block: int = 0):
         self.running = False
         self.fits = False
         self.message = "Q to quit"
@@ -28,8 +28,7 @@ class CardPicker:
         self.mcd = MCDFile(self.mcd_file_path)
 
         self.game_db: dict|None = None
-        self.selected_block = 0
-        self._force = max(0, min(force, 14)) if force != -1 and force is not None else None
+        self.selected_block = selected_block
 
         self.current_col_off = 0
         self.current_frame = 0
@@ -140,7 +139,10 @@ class CardPicker:
                     cur.cur_goto(px + card_width + 1, py + 2)
                     buf.buf_write(f"{colors.BOLD}{block.metadata.BIOSText}{colors.RESET}")
                     cur.cur_goto(px + card_width + 1, py + 3)
-                    buf.buf_write(f"PSIcon Frames: {colors.BOLD}{block.metadata.IconCount}{colors.RESET}")
+                    if block.metadata.IconCount > 1:
+                        buf.buf_write(f"PSIcon Frames: {colors.BOLD}{block.metadata.IconCount}{colors.RESET}")
+                    else:
+                        buf.buf_write(f"{colors.DIM}PSIcon Frames: {block.metadata.IconCount}{colors.RESET}")
 
                 cmn.draw_box(cmn.BoxDrawingParams(
                     x=px + card_width - 1,
@@ -223,7 +225,7 @@ class CardPicker:
         selected_frame = self.mcd.GetBlockDirectory(self.selected_block)
         if not selected_frame.IsUninitialized():
             if selected_frame and not cmn.is_format_supported(selected_frame.FormatID):
-                self.message = f"Format {cmn.get_mapped_format(selected_frame.FormatID)} unsupported!"
+                self.message = f"Format {selected_frame.FormatID} unsupported!"
             else:
                 self.message = f"[Enter] to select block 0x{(self.selected_block + 1):X}"
         else:
@@ -258,9 +260,6 @@ class CardPicker:
             self.current_page = (self.current_page + 1) % 3
 
     def run(self) -> MCDBlock|None:
-        if self._force is not None:
-            return self.mcd.GetBlock(self._force)
-
         self.running = True
         buf.buf_enable_alt()
         buf.buf_clear()
@@ -298,11 +297,7 @@ class CardPicker:
                 self.render()
                 key = cmn.get_key()
                 if key == "\r":
-                    selected_frame = self.mcd.GetBlockDirectory(self.selected_block)
-                    is_format_valid = cmn.is_format_supported(selected_frame.FormatID or "")
-
-                    if is_format_valid:
-                        return self.mcd.GetBlock(self.selected_block)
+                    return self.mcd.GetBlock(self.selected_block)
                 self.update(key)
         finally:
             buf.buf_disable_alt()
